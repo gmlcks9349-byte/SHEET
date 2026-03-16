@@ -92,6 +92,13 @@
     border-bottom: 1px solid rgba(42,42,42,0.5); cursor: pointer;
   }
   .recent-item:hover .recent-name { color: var(--text-dim); }
+  .archive-del-btn {
+    background: transparent; border: none; color: var(--text-dimmer); font-size: 9px;
+    cursor: pointer; padding: 2px 4px; flex-shrink: 0; opacity: 0; transition: opacity 0.15s;
+    font-family: 'Space Mono', monospace;
+  }
+  .recent-item:hover .archive-del-btn { opacity: 1; }
+  .archive-del-btn:hover { color: var(--danger) !important; }
   .recent-thumb {
     width: 34px; height: 22px; background: var(--bg-3); border: 1px solid var(--border);
     display: flex; align-items: center; justify-content: center; font-size: 8px; color: var(--text-dimmer); flex-shrink: 0;
@@ -975,7 +982,15 @@ async function generateWithClaude(geminiAnalysis, propsBase64List, apiKey) {
     '\n\nFor each cut, assign one ROLE from: ESTABLISH, DETAIL, MOOD, CLOSE, ACTION, WIDE, TEXTURE, PROFILE, DYNAMIC, ABSTRACT, AMBIENT, HERO, REVEAL, TRANSITION, FRAGMENT, SCALE, CONTEXT, MOTION, LAYER, FINAL\n\n' +
     'Output this exact JSON structure:\n{\n  "cuts": [\n    {\n      "cut_number": 1,\n      "role": "ESTABLISH",\n      "korean_description": "한국어로 이 컷의 연출 의도와 역할을 2-3문장으로 설명",\n      "normal_prompt": "Full T2I prompt in English, detailed and specific",\n      "json_prompt": {\n        "subject": "",\n        "angle": "",\n        "pose_or_state": "",\n        "lighting": "",\n        "background": "",\n        "mood": "",\n        "style": "photorealistic, 8K"\n      }\n    }\n  ]\n}';
 
-  const messages = [{ role: 'user', content: userPrompt }];
+  const userContent = [];
+  if (propsBase64List && propsBase64List.length > 0) {
+    propsBase64List.forEach((img, i) => {
+      userContent.push({ type: 'text', text: 'PROPS REFERENCE IMAGE ' + (i + 1) + ':' });
+      userContent.push({ type: 'image', source: { type: 'base64', media_type: img.mimeType, data: img.data } });
+    });
+  }
+  userContent.push({ type: 'text', text: userPrompt });
+  const messages = [{ role: 'user', content: userContent }];
 
   const retryDelays = [3000, 6000, 12000];
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -991,7 +1006,8 @@ async function generateWithClaude(geminiAnalysis, propsBase64List, apiKey) {
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01'
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
         },
         body: JSON.stringify({
           model: CLAUDE_MODEL,
@@ -1138,6 +1154,15 @@ function saveToArchive() {
   showToast('Saved to archive', 'success');
 }
 
+function deleteFromArchive(e, id) {
+  e.stopPropagation();
+  const archive = JSON.parse(localStorage.getItem(ARCHIVE_KEY) || '[]');
+  const updated = archive.filter(entry => entry.id !== id);
+  localStorage.setItem(ARCHIVE_KEY, JSON.stringify(updated));
+  loadArchive();
+  showToast('Deleted', 'success');
+}
+
 function loadArchive() {
   const archive = JSON.parse(localStorage.getItem(ARCHIVE_KEY) || '[]');
   const list = document.getElementById('recent-list');
@@ -1146,12 +1171,17 @@ function loadArchive() {
     const item = document.createElement('div');
     item.className = 'recent-item';
     item.onclick = () => loadFromArchive(entry);
+    const delBtn = document.createElement('button');
+    delBtn.className = 'archive-del-btn';
+    delBtn.textContent = '✕';
+    delBtn.onclick = (e) => deleteFromArchive(e, entry.id);
     item.innerHTML =
       '<div class="recent-thumb">IMG</div>' +
       '<div class="recent-info">' +
         '<div class="recent-name">' + entry.title + '</div>' +
         '<div class="recent-meta">' + entry.cat.toUpperCase() + ' · ' + entry.cutCount + '컷</div>' +
       '</div>';
+    item.appendChild(delBtn);
     list.appendChild(item);
   });
 }
